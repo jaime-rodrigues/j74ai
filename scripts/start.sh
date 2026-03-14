@@ -36,7 +36,13 @@ else
     echo "   - MCP Server: Waiting..."
 fi
 
+if curl -s http://localhost:8081/api/v1/god-mode > /dev/null; then
+    echo "   - Plane Backend: OK"
+else
+    echo "   - Plane Backend: Waiting..."
+fi
+
 echo "--- ACES is Running ---"
 echo "Orchestrator UI: http://localhost:5678"
 echo "MCP Server API: http://localhost:8000"
-echo "Plane Kanban: (Check docker-compose ports)"
+echo "Plane API: http://localhost:8081"

@@ -62,6 +62,8 @@ services:
     volumes:
       - ./mcp-server:/app
       - ./target_repo:/app/repo
+    ports:
+      - "8000:8000" # Expose MCP for health checks and direct API access
     depends_on:
       - postgres
     networks:
@@ -94,6 +96,8 @@ services:
   # Note: Full Plane deployment requires dedicated containers (api, web, worker, beat).
   # Using a placeholder 'plane-service' to represent integration.
   plane-service:
+    # The official plane setup is more complex. This is a simplified backend-only service.
+    # For a full UI experience, refer to Plane's official documentation.
     image: makeplane/plane-backend:latest
     container_name: aces_plane
     environment:
@@ -103,6 +107,8 @@ services:
       - PGPASSWORD=${POSTGRES_PASSWORD:-admin}
       - PGDATABASE=plane
       - REDIS_URL=redis://redis:6379/
+    ports:
+      - "8081:8000" # Expose Plane API on host port 8081
     depends_on:
       - postgres
       - redis
