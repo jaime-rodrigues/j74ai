@@ -1,0 +1,154 @@
+{
+  "name": "ACES - Full Code Generation Pipeline (Production Ready)",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Start",
+      "type": "n8n-nodes-base.start",
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// In a real scenario, this comes from a Webhook or Form trigger\nreturn [{ json: { request: 'Create a Python function to calculate Fibonacci sequence', task_type: 'feature' } }]"
+      },
+      "name": "1. Ingest Request",
+      "type": "n8n-nodes-base.function",
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://agents-swarm:8080/execute",
+        "method": "POST",
+        "bodyParameters": {
+          "agent": "TaskManagerAgent",
+          "skill": "agent_kanban_update",
+          "params": {
+            "action": "create",
+            "task_title": "={{$json.request}}"
+          }
+        }
+      },
+      "name": "2. Create Kanban Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://agents-swarm:8080/execute",
+        "method": "POST",
+        "bodyParameters": {
+          "agent": "GitFlowAgent",
+          "skill": "agent_git_workflow",
+          "params": {
+            "action": "create_branch",
+            "task_id": "={{$json.body.issue.id}}",
+            "description": "={{$json.request}}"
+          }
+        }
+      },
+      "name": "3. Create Git Branch",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://mcp-server:8000/context",
+        "method": "POST",
+        "bodyParameters": {
+          "query_text": "={{$json.request}}",
+          "limit": 3
+        }
+      },
+      "name": "4. Retrieve Context (RAG)",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "method": "POST",
+        "headerParameters": {
+          "Authorization": "Bearer {{$env.OPENAI_API_KEY}}"
+        },
+        "bodyParameters": {
+          "model": "gpt-4",
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a Senior Software Engineer. Output ONLY valid JSON containing 'filename' and 'code' fields. Do not include markdown formatting."
+            },
+            {
+              "role": "user",
+              "content": "Task: {{$node[\"1. Ingest Request\"].json.request}}\n\nContext:\n{{$json.results}}"
+            }
+          ]
+        }
+      },
+      "name": "5. Generate Code (LLM)",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://agents-swarm:8080/execute",
+        "method": "POST",
+        "bodyParameters": {
+          "agent": "BackendLogicAgent",
+          "skill": "write_file",
+          "params": {
+            "path": "={{$json.choices[0].message.content.filename}}",
+            "content": "={{$json.choices[0].message.content.code}}"
+          }
+        }
+      },
+      "name": "6. Write Code to Disk",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://agents-swarm:8080/execute",
+        "method": "POST",
+        "bodyParameters": {
+          "agent": "GitFlowAgent",
+          "skill": "agent_git_workflow",
+          "params": {
+            "action": "commit",
+            "message": "feat({{$node[\"2. Create Kanban Task\"].json.body.issue.id}}): implement requested feature"
+          }
+        }
+      },
+      "name": "7. Commit Changes",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://agents-swarm:8080/execute",
+        "method": "POST",
+        "bodyParameters": {
+          "agent": "TaskManagerAgent",
+          "skill": "agent_kanban_update",
+          "params": {
+            "action": "update",
+            "task_id": "={{$node[\"2. Create Kanban Task\"].json.body.issue.id}}",
+            "new_state": "In Review"
+          }
+        }
+      },
+      "name": "8. Update Kanban to 'Review'",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1850, 300]
+    }
+  ],
+  "connections": {
+    "Start": { "main": [ [ { "node": "1. Ingest Request", "type": "main" } ] ] },
+    "1. Ingest Request": { "main": [ [ { "node": "2. Create Kanban Task", "type": "main" } ] ] },
+    "2. Create Kanban Task": { "main": [ [ { "node": "3. Create Git Branch", "type": "main" } ] ] },
+    "3. Create Git Branch": { "main": [ [ { "node": "4. Retrieve Context (RAG)", "type": "main" } ] ] },
+    "4. Retrieve Context (RAG)": { "main": [ [ { "node": "5. Generate Code (LLM)", "type": "main" } ] ] },
+    "5. Generate Code (LLM)": { "main": [ [ { "node": "6. Write Code to Disk", "type": "main" } ] ] },
+    "6. Write Code to Disk": { "main": [ [ { "node": "7. Commit Changes", "type": "main" } ] ] },
+    "7. Commit Changes": { "main": [ [ { "node": "8. Update Kanban to 'Review'", "type": "main" } ] ] }
+  }
+}

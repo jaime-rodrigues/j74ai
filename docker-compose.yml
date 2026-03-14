@@ -1,0 +1,118 @@
+version: '3.8'
+
+services:
+  # --- Infrastructure: Database & Vector Store ---
+  postgres:
+    image: ankane/pgvector:latest
+    container_name: aces_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin}
+      POSTGRES_DB: ${POSTGRES_DB:-aces_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - aces_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: aces_redis
+    restart: always
+    networks:
+      - aces_network
+
+  # --- Core: Orchestrator (n8n) ---
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    container_name: aces_orchestrator
+    restart: always
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASS:-admin}
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB:-aces_db}
+      - DB_POSTGRESDB_USER=${POSTGRES_USER:-admin}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD:-admin}
+    depends_on:
+      - postgres
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./orchestrator/workflows:/home/node/workflows
+    networks:
+      - aces_network
+
+  # --- Core: MCP Server (Model Context Protocol) ---
+  mcp-server:
+    build: 
+      context: ./mcp-server
+      dockerfile: Dockerfile
+    container_name: aces_mcp_server
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin}@postgres:5432/${POSTGRES_DB:-aces_db}
+      - GIT_ROOT=/app/repo
+    volumes:
+      - ./mcp-server:/app
+      - ./target_repo:/app/repo
+    depends_on:
+      - postgres
+    networks:
+      - aces_network
+
+  # --- Agents Runtime (Antigravity/OpenClaw) ---
+  agents-swarm:
+    build: 
+      context: ./.agents
+      dockerfile: Dockerfile
+    container_name: aces_agents_swarm
+    restart: always
+    environment:
+      - ORCHESTRATOR_URL=http://n8n:5678
+      - MCP_SERVER_URL=http://mcp-server:8000
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin}@postgres:5432/${POSTGRES_DB:-aces_db}
+    volumes:
+      - ./.agents:/app/agents
+      - ./orchestrator/skills:/app/skills_orchestrator
+      - ./.agents/skills:/app/skills_agents
+      - ./target_repo:/app/repo
+    depends_on:
+      - n8n
+      - mcp-server
+      - postgres
+    networks:
+      - aces_network
+
+  # --- Project Management: Plane Kanban (Simplified) ---
+  # Note: Full Plane deployment requires dedicated containers (api, web, worker, beat).
+  # Using a placeholder 'plane-service' to represent integration.
+  plane-service:
+    image: makeplane/plane-backend:latest
+    container_name: aces_plane
+    environment:
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGUSER=${POSTGRES_USER:-admin}
+      - PGPASSWORD=${POSTGRES_PASSWORD:-admin}
+      - PGDATABASE=plane
+      - REDIS_URL=redis://redis:6379/
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - aces_network
+
+volumes:
+  postgres_data:
+  n8n_data:
+
+networks:
+  aces_network:
+    driver: bridge
