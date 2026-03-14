@@ -16,6 +16,14 @@ if [ -f .env ]; then
     export $(cat .env | xargs)
 fi
 
+# Login to GitHub Container Registry to pull the OpenClaw image
+if [ -n "$GITHUB_REPO_OWNER" ] && [ -n "$GITHUB_PAT" ]; then
+    echo "Attempting to log in to GitHub Container Registry (ghcr.io)..."
+    echo "$GITHUB_PAT" | docker login ghcr.io -u "$GITHUB_REPO_OWNER" --password-stdin
+else
+    echo "Warning: GITHUB_REPO_OWNER and GITHUB_PAT are not set in .env. Pulling the OpenClaw image may fail if it's private."
+fi
+
 echo "1. Building and Starting Containers..."
 docker-compose up -d --build
 
@@ -36,13 +44,15 @@ else
     echo "   - MCP Server: Waiting..."
 fi
 
-if curl -s http://localhost:8081/api/v1/god-mode > /dev/null; then
-    echo "   - Plane Backend: OK"
+# A simple check to see if OpenClaw is responding on its port
+if curl -s http://localhost:8081/ > /dev/null; then
+    echo "   - OpenClaw Executor: OK"
 else
-    echo "   - Plane Backend: Waiting..."
+    echo "   - OpenClaw Executor: Waiting..."
 fi
 
 echo "--- ACES is Running ---"
 echo "Orchestrator UI: http://localhost:5678"
 echo "MCP Server API: http://localhost:8000"
-echo "Plane API: http://localhost:8081"
+echo "Kanban UI (Planka): http://localhost:3000"
+echo "OpenClaw Executor: http://localhost:8081"

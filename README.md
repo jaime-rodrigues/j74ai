@@ -28,7 +28,7 @@ O sistema é composto por vários componentes principais que trabalham em conjun
 *   **Conteinerização**: Docker, Docker Compose
 *   **Banco de Dados**: PostgreSQL com extensão `pgvector`
 *   **Gerenciamento de Projetos**: Plane
-*   **Runtimes dos Agentes**: Baseado em Python (compatível com frameworks como Antigravity/OpenClaw)
+*   **Executor de Ações**: OpenClaw (`ghcr.io/openclaw/openclaw:latest`)
 *   **Controle de Versão**: Git
 
 ## Estrutura do Repositório
@@ -75,7 +75,8 @@ O projeto é organizado em componentes modulares:
 4.  **Acesse os serviços:**
     *   **UI do Orquestrador (n8n)**: `http://localhost:5678`
     *   **API do Servidor MCP**: `http://localhost:8000`
-    *   **API do Plane**: `http://localhost:8081`
+    *   **UI do Kanban (Planka)**: `http://localhost:3000`
+    *   **Executor (OpenClaw)**: `http://localhost:8081`
 
 ## Configuração
 
