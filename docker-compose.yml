@@ -1,129 +1,78 @@
 version: '3.8'
 
 services:
-  # --- Infrastructure: Database & Vector Store ---
   postgres:
     image: ankane/pgvector:latest
-    container_name: aces_postgres
-    restart: always
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-admin}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin}
-      POSTGRES_DB: ${POSTGRES_DB:-aces_db}
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: code_factory
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - aces_network
+      - pg_data:/var/lib/postgresql/data
 
   redis:
     image: redis:7-alpine
-    container_name: aces_redis
-    restart: always
-    networks:
-      - aces_network
-
-  # --- Core: Orchestrator (n8n) ---
-  n8n:
-    image: docker.n8n.io/n8nio/n8n
-    container_name: aces_orchestrator
-    restart: always
     ports:
-      - "5678:5678"
-    environment:
-      - N8N_BASIC_AUTH_ACTIVE=true
-      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
-      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASS:-admin}
-      - DB_TYPE=postgresdb
-      - DB_POSTGRESDB_HOST=postgres
-      - DB_POSTGRESDB_PORT=5432
-      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB:-aces_db}
-      - DB_POSTGRESDB_USER=${POSTGRES_USER:-admin}
-      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD:-admin}
-    depends_on:
-      - postgres
-    volumes:
-      - n8n_data:/home/node/.n8n
-      - ./orchestrator/workflows:/home/node/workflows
-    networks:
-      - aces_network
+      - "6379:6379"
 
-  # --- Core: MCP Server (Model Context Protocol) ---
-  mcp-server:
-    build: 
-      context: ./mcp-server
-      dockerfile: Dockerfile
-    container_name: aces_mcp_server
-    restart: always
-    environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin}@postgres:5432/${POSTGRES_DB:-aces_db}
-      - GIT_ROOT=/app/repo
-    volumes:
-      - ./mcp-server:/app
-      - ./target_repo:/app/repo
+  kanban-ui:
+    # Usando Planka ou Plane como representação da interface Kanban
+    image: ghcr.io/plankanban/planka:latest
     ports:
-      - "8000:8000" # Expose MCP for health checks and direct API access
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://admin:admin@postgres:5432/code_factory
     depends_on:
       - postgres
-    networks:
-      - aces_network
 
-  # --- Agents Runtime (Antigravity/OpenClaw) ---
-  agents-swarm:
-    build: 
-      context: ./.agents
-      dockerfile: Dockerfile
-    container_name: aces_agents_swarm
-    restart: always
+  orchestrator:
+    build: ./orchestrator
     environment:
-      - ORCHESTRATOR_URL=http://n8n:5678
-      - MCP_SERVER_URL=http://mcp-server:8000
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin}@postgres:5432/${POSTGRES_DB:-aces_db}
-      - GITHUB_PAT=${GITHUB_PAT}
-      - GIT_AUTHOR_NAME=${GIT_AUTHOR_NAME:-"ACES Agent"}
-      - GIT_AUTHOR_EMAIL=${GIT_AUTHOR_EMAIL:-"bot@aces.dev"}
-      - GITHUB_REPO_OWNER=${GITHUB_REPO_OWNER}
-      - GITHUB_REPO_NAME=${GITHUB_REPO_NAME}
-    volumes:
-      - ./.agents:/app/agents
-      - ./orchestrator/skills:/app/skills_orchestrator
-      - ./.agents/skills:/app/skills_agents
-      - ./target_repo:/app/repo
-    depends_on:
-      - n8n
-      - mcp-server
-      - postgres
-    networks:
-      - aces_network
-
-  # --- Project Management: Plane Kanban (Simplified) ---
-  # Note: Full Plane deployment requires dedicated containers (api, web, worker, beat).
-  # Using a placeholder 'plane-service' to represent integration.
-  plane-service:
-    # The official plane setup is more complex. This is a simplified backend-only service.
-    # For a full UI experience, refer to Plane's official documentation.
-    image: makeplane/plane-backend:latest
-    container_name: aces_plane
-    environment:
-      - PGHOST=postgres
-      - PGPORT=5432
-      - PGUSER=${POSTGRES_USER:-admin}
-      - PGPASSWORD=${POSTGRES_PASSWORD:-admin}
-      - PGDATABASE=plane
-      - REDIS_URL=redis://redis:6379/
+      - REDIS_URL=redis://redis:6379/0
+      - LLM_API_KEY=${LLM_API_KEY}
     ports:
-      - "8081:8000" # Expose Plane API on host port 8081
+      - "8080:8080"
     depends_on:
-      - postgres
       - redis
-    networks:
-      - aces_network
+
+  worker-queue:
+    build: ./orchestrator
+    command: celery -A core.tasks worker --loglevel=info
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+
+  agents:
+    build: ./agents
+    environment:
+      - OPENCLAW_URL=http://openclaw:8081
+      - MCP_URL=http://mcp-server:8000
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - openclaw
+      - mcp-server
+
+  mcp-server:
+    build: ./mcp-server
+    environment:
+      - DB_URL=postgresql://admin:admin@postgres:5432/code_factory
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+
+  openclaw:
+    # Framework executor de ações
+    image: openclaw/executor:latest
+    privileged: true # Necessário se for executar docker-in-docker
+    environment:
+      - WORKSPACE_DIR=/workspace
+    volumes:
+      - ./workspace:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
-  postgres_data:
-  n8n_data:
-
-networks:
-  aces_network:
-    driver: bridge
+  pg_data:

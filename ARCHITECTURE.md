@@ -1,84 +1,71 @@
-# Autonomous Code Evolution System - Arquitetura e Definições (ETAPA 1)
+# AUTONOMOUS AI CODE FACTORY - Architecture Document
 
-## 1. Arquitetura do Sistema
+## 1. Visão Geral da Arquitetura em Camadas
 
-O sistema é projetado como uma plataforma distribuída de agentes autônomos orquestrados para evoluir bases de código.
+O sistema foi desenhado para ser uma fábrica de software altamente distribuída, baseada em eventos e focada em isolamento de responsabilidades.
 
-### Componentes Principais:
-1.  **Orquestrador Central (n8n + Runtime Customizado)**: Gerencia o ciclo de vida da solicitação, invocando agentes e mantendo o estado do fluxo.
-2.  **Camada de Agentes (Antigravity/OpenClaw)**: Conjunto de 20 agentes especializados que executam tarefas atômicas ou complexas usando "skills".
-3.  **Memória & Dados (PostgreSQL + pgvector)**:
-    *   Armazena o estado das tarefas.
-    *   Armazena embeddings de código e documentação para recuperação semântica (RAG).
-    *   Interface via **MCP Server** (Model Context Protocol).
-4.  **Gestão de Projetos (Plane Kanban)**: Fonte da verdade para o status das tarefas e roadmap.
-5.  **Controle de Versão (Git Automation)**: Manipulação direta de repositórios, branches e Pull Requests.
-6.  **Sistema de Skills**: Scripts executáveis (Python/Bash/Node) localizados em `orchestrator/skills` e `.agents/skills` que conferem capacidades práticas aos agentes (ex: `run_test`, `migrate_db`, `git_commit`).
-
-### Diagrama Lógico:
-`Request` -> `Orchestrator` -> `Plane (Task Creation)` -> `Agents Swarm` <-> `MCP Server/DB` -> `Git (PR)`
+*   **Camada 1 - Orquestrador (Python)**: O cérebro do sistema. Recebe o webhook ou requisição do usuário, analisa usando um LLM de planejamento, quebra a melhoria em cards do Kanban e despacha eventos para a Worker Queue.
+*   **Camada 2 - Agentes Autônomos**: Um "enxame" de agentes especializados (CodeAgent, RefactorAgent, DBAAgent, TestAgent, GitAgent, DocAgent). Eles reagem às tarefas da fila, planejam a execução e decidem quais ferramentas usar. **Eles não executam código localmente.**
+*   **Camada 3 - Skills Dinâmicas**: Módulos carregados em tempo de execução. Fornecem aos agentes a "receita" de como resolver problemas específicos (ex: `analyze_schema`).
+*   **Camada 4 - MCP Server (Data Knowledge)**: Um servidor dedicado ao PostgreSQL. Ele implementa o Model Context Protocol para expor o esquema do banco, triggers e constraints como ferramentas semânticas para os agentes de IA.
+*   **Camada 5 - OpenClaw Executor**: O "músculo" do sistema. Um ambiente sandboxed onde as decisões dos agentes se tornam realidade (edição de arquivos, comandos de terminal, builds do docker, git).
+*   **Camada 6 - Versionamento Git**: Gerenciado pelo GitAgent através do OpenClaw, automatizando o fluxo `Branch -> Commit -> PR`.
+*   **Camada 7 - Kanban**: A interface humana (Human-in-the-loop). Onde o usuário aprova o andamento e o PR final.
+*   **Camada 8 - Base de Conhecimento (pgvector)**: Memória de longo prazo (RAG) para contexto de código e documentação.
 
 ---
 
-## 2. Descrição dos 20 Agentes Autônomos
+## 2. Diagrama de Fluxo
 
-Os agentes são divididos em clusters de especialidade:
+```mermaid
+sequenceDiagram
+    participant User
+    participant Orchestrator
+    participant Kanban
+    participant WorkerQueue
+    participant Agents
+    participant MCP_Server
+    participant OpenClaw
 
-### Cluster de Planejamento & Gerenciamento
-1.  **RequirementAnalystAgent**: Analisa a solicitação em linguagem natural, identifica ambiguidades e define o escopo.
-2.  **SystemArchitectAgent**: Define a arquitetura da solução, padrões de design e componentes afetados.
-3.  **TaskManagerAgent**: Cria, atualiza e move cards no Plane Kanban. Define dependências entre tarefas.
-4.  **OrchestratorAgent**: Monitora o progresso global, resolve bloqueios e reinicia agentes se necessário.
-
-### Cluster de Dados & Backend
-5.  **DbSchemaAgent**: Projeta alterações no esquema do banco de dados (DDL) e cria migrações.
-6.  **SqlOptimizerAgent**: Escreve e otimiza queries complexas, analisando planos de execução via MCP.
-7.  **BackendLogicAgent**: Implementa a lógica de negócios, serviços e controladores.
-8.  **ApiSpecAgent**: Define e atualiza contratos de API (OpenAPI/Swagger/GraphQL).
-
-### Cluster de Frontend & UX
-9.  **FrontendComponentAgent**: Gera ou atualiza componentes de UI (React/Vue/etc.).
-10. **StateManagementAgent**: Gerencia a lógica de estado do frontend (Redux/Context/Stores).
-
-### Cluster de Qualidade & Segurança
-11. **TestGenAgent**: Gera testes unitários e de integração para o código novo.
-12. **SecurityAuditorAgent**: Analisa o código gerado em busca de vulnerabilidades (OWASP Top 10) e segredos expostos.
-13. **CodeReviewAgent**: Simula um revisor humano, verificando estilo, complexidade ciclomática e boas práticas.
-14. **DependencyManagerAgent**: Gerencia `package.json`, `requirements.txt`, etc., garantindo versões seguras.
-
-### Cluster de Operações & DevOps
-15. **GitFlowAgent**: Gerencia branches (`feature/xxx`), commits semânticos e resolução de conflitos básicos.
-16. **PrManagerAgent**: Cria descrições detalhadas de Pull Requests e solicita aprovação.
-17. **CiCdConfigAgent**: Mantém arquivos de pipeline (GitHub Actions/GitLab CI).
-18. **DockerDevAgent**: Mantém `Dockerfile` e `docker-compose.yml` atualizados.
-
-### Cluster de Inteligência & Contexto
-19. **ContextRetrievalAgent**: Usa pgvector para encontrar código similar ou documentação relevante no histórico.
-20. **KnowledgeBaseAgent**: Atualiza a documentação técnica do projeto após as mudanças.
+    User->>Orchestrator: Solicita Melhoria
+    Orchestrator->>Kanban: Cria Tarefas (Planning)
+    Orchestrator->>WorkerQueue: Enfileira Tarefas
+    WorkerQueue->>Agents: Consome Tarefa (ex: DBAAgent)
+    Agents->>MCP_Server: Consulta Schema (get_tables)
+    MCP_Server-->>Agents: Retorna Schema
+    Agents->>OpenClaw: Executa Migration (Bash/File Edit)
+    OpenClaw-->>Agents: Status Sucesso
+    Agents->>Kanban: Move para 'In Progress' / 'Review'
+    Agents->>WorkerQueue: Aciona próximo agente (ex: CodeAgent)
+```
 
 ---
 
-## 3. Fluxo de Execução
+## 3. Estrutura do Repositório
 
-1.  **Ingestão**:
-    *   Usuário submete: "Adicionar autenticação 2FA no login".
-    *   **RequirementAnalystAgent** processa e estrutura o pedido.
+```text
+/home/j74_info/code_factory
+├── orchestrator/           # API de entrada e decomposição de tarefas
+├── agents/                 # Lógica dos agentes autônomos
+│   ├── skills/             # Módulos injetáveis de habilidades
+│   └── core/               # Classes base e prompts
+├── mcp-server/             # Conector do banco de dados para os agentes
+├── openclaw/               # Configurações do ambiente de execução
+├── services/               # Serviços auxiliares e integrações externas
+├── docker/                 # Imagens e Dockerfiles específicos
+├── kanban/                 # Configuração da interface de gestão
+├── database/               # Scripts SQL e inicialização do pgvector
+├── docs/                   # Documentação do sistema
+└── docker-compose.yml      # Infraestrutura completa
+```
 
-2.  **Planejamento**:
-    *   **SystemArchitectAgent** desenha a solução (Tabela `users_2fa`, rotas API, UI Screen).
-    *   **TaskManagerAgent** cria tarefas no Plane: "Criar Tabela", "API Backend", "Tela Frontend".
+---
 
-3.  **Execução (Iterativa)**:
-    *   *Sub-fluxo Banco de Dados*: **DbSchemaAgent** cria migration -> **GitFlowAgent** comita.
-    *   *Sub-fluxo Backend*: **BackendLogicAgent** cria endpoint -> **TestGenAgent** cria testes -> **SecurityAuditorAgent** valida.
-    *   *Uso de Skills*: Agentes invocam scripts em `.agents/skills` para rodar linters ou testes reais.
-    *   *Contexto*: Agentes consultam **MCP Server** para entender a estrutura atual da classe `User`.
+## 9. Fluxo de Geração de Código
 
-4.  **Consolidação**:
-    *   **CodeReviewAgent** faz a varredura final.
-    *   **PrManagerAgent** abre o Pull Request.
-    *   **TaskManagerAgent** move cards para "Review".
-
-5.  **Conclusão**:
-    *   Sistema aguarda aprovação humana no PR.
-    *   Após merge, **KnowledgeBaseAgent** atualiza docs.
+1. **Recepção**: O usuário pede "Criar endpoint de deleção de usuários com soft-delete".
+2. **Planejamento**: O Orquestrador divide: Tarefa 1 (DB), Tarefa 2 (API), Tarefa 3 (Testes). Branch `feature/user-soft-delete` é criada via OpenClaw.
+3. **Banco (DBAAgent)**: Pergunta ao MCP Server sobre a tabela `users`. Gera migration. Pede ao OpenClaw para rodar a migration.
+4. **Código (CodeAgent)**: Lê o contexto atualizado (RAG), gera a função em Python. Envia comando de `write_file` ao OpenClaw.
+5. **Testes (TestAgent)**: Analisa o arquivo gerado, cria o `test_users.py`, pede ao OpenClaw para rodar `pytest`.
+6. **Revisão**: O GitAgent commita as mudanças, abre o PR. O card no Kanban vai para `Review`. O usuário aprova e o merge é feito.
