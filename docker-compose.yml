@@ -80,6 +80,11 @@ services:
       - ORCHESTRATOR_URL=http://n8n:5678
       - MCP_SERVER_URL=http://mcp-server:8000
       - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin}@postgres:5432/${POSTGRES_DB:-aces_db}
+      - GITHUB_PAT=${GITHUB_PAT}
+      - GIT_AUTHOR_NAME=${GIT_AUTHOR_NAME:-"ACES Agent"}
+      - GIT_AUTHOR_EMAIL=${GIT_AUTHOR_EMAIL:-"bot@aces.dev"}
+      - GITHUB_REPO_OWNER=${GITHUB_REPO_OWNER}
+      - GITHUB_REPO_NAME=${GITHUB_REPO_NAME}
     volumes:
       - ./.agents:/app/agents
       - ./orchestrator/skills:/app/skills_orchestrator

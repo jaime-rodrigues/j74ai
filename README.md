@@ -94,6 +94,17 @@ N8N_PASS=admin
 # Chave da API da OpenAI (para o agente de geração de código)
 OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
+# Identidade do Git para commits automáticos
+# Usado pelo GitFlowAgent para autoria dos commits.
+GIT_AUTHOR_NAME="ACES Agent"
+GIT_AUTHOR_EMAIL="bot@your-domain.com"
+
+# Token de Acesso Pessoal (PAT) do GitHub
+# Necessário para criar Pull Requests. Deve ter escopo de 'repo'.
+GITHUB_PAT=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+GITHUB_REPO_OWNER=your-github-username
+GITHUB_REPO_NAME=your-repo-name
+
 # Token da API do Plane (para integração com o Kanban)
 # Gere isso a partir da sua instância do Plane
 PLANE_API_TOKEN=pln_xxxxxxxxxxxxxxxxxxxxxxxxxxxx

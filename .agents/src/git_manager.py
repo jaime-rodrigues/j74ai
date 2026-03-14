@@ -1,60 +1,42 @@
-import subprocess
 import os
-from typing import List, Optional
+import subprocess
+import logging
+from slugify import slugify
 
 class GitManager:
     """
-    Wrapper for Git CLI operations.
-    Executes commands in the repository root.
+    Manages local Git repository operations like branching, committing, and pushing.
+    Also handles the initial git user configuration from environment variables.
     """
-    def __init__(self, repo_path: str = "."):
-        self.repo_path = os.path.abspath(repo_path)
+    def __init__(self, repo_path: str):
+        self.repo_path = repo_path
+        self.logger = logging.getLogger(self.__class__.__name__)
+        
+        # Configure Git user identity for the container from environment variables
+        author_name = os.getenv("GIT_AUTHOR_NAME")
+        author_email = os.getenv("GIT_AUTHOR_EMAIL")
 
-    def _run_git(self, args: List[str]) -> str:
-        try:
-            result = subprocess.run(
-                ["git"] + args,
-                cwd=self.repo_path,
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            return result.stdout.strip()
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Git command failed: {' '.join(args)}\nError: {e.stderr}")
+        if author_name and author_email:
+            self._run_command(["git", "config", "--global", "user.name", author_name])
+            self._run_command(["git", "config", "--global", "user.email", author_email])
+            self.logger.info(f"Git identity configured for {author_name} <{author_email}>.")
+        else:
+            self.logger.warning("GIT_AUTHOR_NAME or GIT_AUTHOR_EMAIL not set. Commits may fail.")
 
-    def init_repo(self):
-        return self._run_git(["init"])
+    def _run_command(self, command: list[str], check=True) -> subprocess.CompletedProcess:
+        """Helper to run a git command."""
+        return subprocess.run(command, cwd=self.repo_path, check=check, capture_output=True, text=True)
 
-    def get_current_branch(self) -> str:
-        return self._run_git(["rev-parse", "--abbrev-ref", "HEAD"])
-
-    def checkout_branch(self, branch_name: str, create: bool = False):
-        args = ["checkout"]
-        if create:
-            args.append("-b")
-        args.append(branch_name)
-        return self._run_git(args)
-
-    def stage_files(self, files: Optional[List[str]] = None):
-        if not files:
-            return self._run_git(["add", "."])
-        return self._run_git(["add"] + files)
+    def create_branch(self, task_id: str, description: str):
+        """Creates and checks out a new feature branch."""
+        branch_name = f"feature/{task_id}-{slugify(description)}"
+        self.logger.info(f"Creating and checking out new branch: {branch_name}")
+        self._run_command(["git", "checkout", "-b", branch_name])
+        return branch_name
 
     def commit(self, message: str):
-        return self._run_git(["commit", "-m", message])
-
-    def push(self, remote: str = "origin", branch: str = None):
-        if not branch:
-            branch = self.get_current_branch()
-        # In a real scenario, we might need to handle authentication here or rely on SSH keys/Env vars
-        return self._run_git(["push", remote, branch])
-
-    def status(self) -> str:
-        return self._run_git(["status", "--short"])
-
-    def create_branch_from_task(self, task_id: str, description: str):
-        """Generates a semantic branch name."""
-        clean_desc = description.lower().replace(" ", "-").replace("/", "-")
-        branch_name = f"feature/{task_id}-{clean_desc}"
-        return self.checkout_branch(branch_name, create=True)
+        """Adds all changes and commits them."""
+        self.logger.info("Adding all changes to staging area...")
+        self._run_command(["git", "add", "."])
+        self.logger.info(f"Committing with message: '{message}'")
+        self._run_command(["git", "commit", "-m", message])
