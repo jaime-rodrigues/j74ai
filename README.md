@@ -91,8 +91,10 @@ POSTGRES_DB=aces_db
 N8N_USER=admin
 N8N_PASS=admin
 
-# Chave da API da OpenAI (para o agente de geração de código)
-OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# Configuração do LLM (Opcional)
+# O sistema está pré-configurado para usar um modelo auto-hospedado via Ollama.
+# A chave da API da OpenAI só é necessária se você modificar o sistema para usar seus serviços.
+# OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # Identidade do Git para commits automáticos
 # Usado pelo GitFlowAgent para autoria dos commits.
