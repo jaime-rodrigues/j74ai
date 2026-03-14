@@ -22,7 +22,8 @@ def main():
 
     print("\n--- Available Skills ---")
     for name, meta in loader.list_skills().items():
-        print(f"[{meta['category'].upper()}] {name}: {meta['description']}")
+        skill_type = meta.get('type', 'executable').capitalize()
+        print(f"[{meta['category'].upper()}] ({skill_type}) {name}: {meta['description']}")
 
     # Example execution (uncomment to test if skills exist)
     # try:
